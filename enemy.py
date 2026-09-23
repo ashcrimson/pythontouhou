@@ -18,7 +18,7 @@ class Enemy(pygame.sprite.Sprite):
         #画像
         self.image_list = []
         for i in range(5):
-            image = pygame.image.load(f'assets/img/enemy/{i}.png')
+            image = pygame.image.load(f'assets/img/enemy/enemy{i}.png')
             self.image_list.append(image)
 
         self.index = 0
@@ -54,7 +54,7 @@ class Enemy(pygame.sprite.Sprite):
 
     def animation(self):
         if self.alive == True:
-            self.index *= 0.15
+            self.index += 0.15
             if self.index >= len(self.image_list):
                 self.index = 0
 

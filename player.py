@@ -18,7 +18,7 @@ class Player(pygame.sprite.Sprite):
             #画像
             self.image_list = []
             for i in range(3):
-                image = pygame.image.load(f"assets/img/player/{i}.png")
+                image = pygame.image.load(f"assets/img/player/reimu{i}.png")
                 self.image_list.append(image)
 
             self.index = 0 #0:idle, 1:left, 2:right
@@ -41,6 +41,8 @@ class Player(pygame.sprite.Sprite):
             #効果音
             self.shot_sound = pygame.mixer.Sound('assets/sound/shot.mp3')
             self.shot_sound.set_volume(0.2)
+            self.death_sound = pygame.mixer.Sound('assets/sound/death.mp3')
+            self.death_sound.set_volume(0.2)
 
 
 
@@ -108,6 +110,7 @@ class Player(pygame.sprite.Sprite):
 
     def check_death(self):
         if self.alive == False:
+            self.death_sound.play()
             self.kill()
 
     def update_image(self):
