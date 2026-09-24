@@ -23,10 +23,37 @@ class Game:
         self.timer = 0
 
         #背景
-        self.pre_bg_img = pygame.image.load('assets/img/background/bg.png')
+        self.pre_bg_img = pygame.image.load('assets/img/background/background0.png')
         self.bg_img = pygame.transform.scale(self.pre_bg_img, (screen_width, screen_height))
         self.bg_y = 0
         self.scroll_speed = 0.5
+
+        self.middle_bg_img = pygame.image.load(
+            'assets/img/background/background1.png'
+        ).convert_alpha()
+
+        self.middle_bg_img = pygame.transform.scale(
+            self.middle_bg_img,
+            (screen_width, screen_height)
+        )
+
+        self.middle_bg_y = 0
+        self.middle_bg_speed = 1
+
+        self.cloud_img = pygame.image.load(
+            'assets/img/background/background2.png'
+        ).convert_alpha()
+
+        self.clouds = []
+
+        for i in range(6):
+            x = random.randint(0, screen_width - self.cloud_img.get_width())
+            y = random.randint(0, screen_height)
+            self.clouds.append([x, y])
+
+        self.cloud_speed = 1
+
+
 
         #ゲームオーバー判定
         self.game_over = False
@@ -40,11 +67,25 @@ class Game:
         self.player_group = pygame.sprite.GroupSingle()
         self.enemy_group = pygame.sprite.Group()
 
+    # def enemy_killed(self):
+    #     self.killed_enemies += 1
+    #     print("Enemigos derrotados:", self.killed_enemies)
+    def enemy_killed(self):
+        self.killed_enemies += 1
+        print("Game:", id(self), "| Enemigos derrotados:", self.killed_enemies)
+
     def create_enemy(self):
         self.timer += 1
         if self.timer > 50:
-            enemy = Enemy(self.enemy_group, random.randint(50, 550), 0, self.player.bullet_group)
+            enemy = Enemy(
+                self.enemy_group,
+                random.randint(50, 550),
+                0,
+                self.player.bullet_group,
+                self.enemy_killed
+            )
             self.timer = 0
+            self.killed_enemies = 0
 
     def player_death(self):
         if len(self.player_group) == 0:
@@ -60,8 +101,43 @@ class Game:
 
     def scroll_bg(self):
         self.bg_y = (self.bg_y + self.scroll_speed) % screen_height
-        self.screen.blit(self.bg_img, (0, self.bg_y - screen_height))
-        self.screen.blit(self.bg_img, (0, self.bg_y))
+
+        # Suelo rocoso
+        self.screen.blit(
+            self.bg_img,
+            (0, self.bg_y - screen_height)
+        )
+        self.screen.blit(
+            self.bg_img,
+            (0, self.bg_y)
+        )
+
+        # Malla
+        self.middle_bg_y = (
+                                   self.middle_bg_y + self.middle_bg_speed
+                           ) % screen_height
+
+        self.screen.blit(
+            self.middle_bg_img,
+            (0, self.middle_bg_y - screen_height)
+        )
+        self.screen.blit(
+            self.middle_bg_img,
+            (0, self.middle_bg_y)
+        )
+
+        # Niebla / nubes
+        for cloud in self.clouds:
+            cloud[1] += self.cloud_speed
+
+            if cloud[1] > screen_height:
+                cloud[1] = -self.cloud_img.get_height()
+                cloud[0] = random.randint(
+                    0,
+                    screen_width - self.cloud_img.get_width()
+                )
+
+            self.screen.blit(self.cloud_img, cloud)
 
     def run(self):
         self.scroll_bg()
@@ -78,5 +154,4 @@ class Game:
         self.enemy_group.draw(self.screen)
         self.enemy_group.update()
 
-        print(self.enemy_group)
 

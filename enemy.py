@@ -4,15 +4,18 @@ import explosion
 from setting import *
 import random
 from explosion import Explosion
+from enemy_bullet import EnemyBullet
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, groups,x,y, bullet_group):
+    def __init__(self, groups, x, y, bullet_group, enemy_killed):
         super().__init__(groups)
 
         self.screen = pygame.display.get_surface()
 
         #グループ
         self.bullet_group = bullet_group
+        self.enemy_killed = enemy_killed
+        self.enemy_bullet_group = pygame.sprite.Group()
         self.exposion_group = pygame.sprite.Group()
 
         #画像
@@ -31,9 +34,10 @@ class Enemy(pygame.sprite.Sprite):
         self.direction = pygame.math.Vector2((random.choice(move_list), 1))
         self.speed = 1
         self.timer = 0
+        self.shoot_timer = 0
 
         #体力
-        self.health = 3
+        self.health = 1
         self.alive = True
 
         #爆発
@@ -51,6 +55,17 @@ class Enemy(pygame.sprite.Sprite):
 
         self.rect.x += self.direction.x * self.speed
         self.rect.y += self.direction.y * self.speed
+
+    def shoot(self):
+        self.shoot_timer += 1
+
+        if self.shoot_timer >= 100:
+            EnemyBullet(
+                self.enemy_bullet_group,
+                self.rect.centerx,
+                self.rect.bottom
+            )
+            self.shoot_timer = 0
 
     def animation(self):
         if self.alive == True:
@@ -81,12 +96,15 @@ class Enemy(pygame.sprite.Sprite):
             self.speed = 0
             explosion = Explosion(self.exposion_group, self.rect.centerx, self.rect.centery)
             self.explosion = True
+            self.enemy_killed()
             self.explosion_sound.play()
+
         if self.explosion and len(self.exposion_group) == 0:
             self.kill()
 
     def update(self):
         self.move()
+        self.shoot()
         self.check_off_screen()
         self.animation()
         self.collision_bullet()
@@ -95,3 +113,5 @@ class Enemy(pygame.sprite.Sprite):
         #グループの描画と更新
         self.exposion_group.draw(self.screen)
         self.exposion_group.update()
+        self.enemy_bullet_group.draw(self.screen)
+        self.enemy_bullet_group.update()

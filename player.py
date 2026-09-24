@@ -108,6 +108,18 @@ class Player(pygame.sprite.Sprite):
         if self.health <= 0:
             self.alive = False
 
+    def collision_enemy_bullet(self):
+        for enemy in self.enemy_group:
+            for bullet in enemy.enemy_bullet_group:
+                if self.rect.colliderect(bullet.rect):
+                    bullet.kill()
+                    self.health -= 1
+
+        if self.health <= 0:
+            self.alive = False
+
+
+
     def check_death(self):
         if self.alive == False:
             self.death_sound.play()
@@ -123,10 +135,10 @@ class Player(pygame.sprite.Sprite):
         self.update_image()
         self.cooldown_bullet()
         self.collision_enemy()
+        self.collision_enemy_bullet()
         self.check_death()
 
         #グループの描画と更新
         self.bullet_group.draw(self.screen)
         self.bullet_group.update()
 
-        print(self.bullet_group)

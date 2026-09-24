@@ -2,27 +2,27 @@ import pygame
 from setting import *
 
 
-class Bullet(pygame.sprite.Sprite):
+class EnemyBullet(pygame.sprite.Sprite):
 
-    def __init__(self, groups,x,y):
+    def __init__(self, groups, x, y):
         super().__init__(groups)
 
         #画像
         self.image_list = []
-        for i in range(3):
-            image = pygame.image.load(f"assets/img/bullet/shot{i}.png")
+        for i in range(2):
+            image = pygame.image.load(f"assets/img/bullet/enemy_shot{i}.png")
             self.image_list.append(image)
 
         self.index = 0
         self.pre_image = self.image_list[self.index]
-        self.image = pygame.transform.scale(self.pre_image,(24,48))
-        self.rect = self.image.get_rect(midbottom=(x,y))
+        self.image = pygame.transform.scale(self.pre_image, (24, 48))
+        self.rect = self.image.get_rect(midtop=(x, y))
 
         #移動
-        self.speed = 8
+        self.speed = 5
 
     def check_off_screen(self):
-        if self.rect.bottom < 0:
+        if self.rect.top > screen_height:
             self.kill()
 
     def animation(self):
@@ -35,7 +35,7 @@ class Bullet(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(self.pre_image, (24, 48))
 
     def move(self):
-        self.rect.y -= self.speed
+        self.rect.y += self.speed
 
     def update(self):
         self.move()
