@@ -33,6 +33,8 @@ while run:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 run = False
+        if event.type == pygame.KEYDOWN:
+            game.dialogue_input(event)
 
     #更新
     pygame.display.update()

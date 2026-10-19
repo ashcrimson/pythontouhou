@@ -142,3 +142,12 @@ class Player(pygame.sprite.Sprite):
         self.bullet_group.draw(self.screen)
         self.bullet_group.update()
 
+    def collision_boss_bullet(self, boss_bullet_group):
+        for bullet in boss_bullet_group.copy():
+            if self.rect.colliderect(bullet.rect):
+                bullet.kill()
+                self.health -= 1
+
+        if self.health <= 0:
+            self.alive = False
+
