@@ -74,13 +74,15 @@ class Player(pygame.sprite.Sprite):
             )
             Bullet(
                 self.bullet_group,
-                self.rect.centerx - 15,
-                self.rect.top + 5
+                self.rect.centerx - 25,
+                self.rect.top + 5,
+                direction=-3
             )
             Bullet(
                 self.bullet_group,
-                self.rect.centerx + 15,
-                self.rect.top + 5
+                self.rect.centerx + 25,
+                self.rect.top + 5,
+                direction=3
             )
 
             self.fire = True

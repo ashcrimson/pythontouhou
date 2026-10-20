@@ -4,7 +4,7 @@ from setting import *
 
 class Bullet(pygame.sprite.Sprite):
 
-    def __init__(self, groups,x,y):
+    def __init__(self, groups, x, y, direction=0):
         super().__init__(groups)
 
         #画像
@@ -20,6 +20,7 @@ class Bullet(pygame.sprite.Sprite):
 
         #移動
         self.speed = 8
+        self.direction = direction
 
     def check_off_screen(self):
         if self.rect.bottom < 0:
@@ -35,6 +36,7 @@ class Bullet(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(self.pre_image, (12, 32))
 
     def move(self):
+        self.rect.x += self.direction
         self.rect.y -= self.speed
 
     def update(self):

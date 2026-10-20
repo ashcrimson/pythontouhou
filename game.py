@@ -7,6 +7,7 @@ from support import draw_text
 from explosion import Explosion
 from enemy_bullet import EnemyBullet
 import cv2
+import math
 
 
 class Game:
@@ -60,6 +61,18 @@ class Game:
              "Freshly-harvested sweet potatoes are my perfume. You think I'd let a shrine maiden eat me?"),
         ]
 
+        self.ending_script = [
+            ("reimu", 3, "reimu", None,
+             "Gods sure do come in all shapes and sizes. I wonder if my shrine's god is really any stronger?"),
+
+            ("reimu", 6, "reimu", None,
+             "I'd better hurry on ahead"),
+        ]
+
+        self.ending_dialogue = False
+        self.ending_screen = False
+        self.ending_screen_time = 0
+
         self.dialogue_index = 0
         self.dialogue_active = False
 
@@ -68,13 +81,14 @@ class Game:
         self.dialogue_timer = 0
         self.timer = 0
         self.killed_enemies = 0
+        self.wave_group_index = 0
 
         # Fases de la Stage 1
         self.stage_phase = "wave1"
 
         # Sub-jefe provisional: cuadrado rojo
         self.subboss_active = False
-        self.subboss_max_hp = 100
+        self.subboss_max_hp = 300
         self.subboss_hp = self.subboss_max_hp
         self.subboss_rect = pygame.Rect(0, 0, 80, 80)
         self.subboss_rect.midtop = (screen_width // 2, 80)
@@ -111,7 +125,7 @@ class Game:
         self.subboss_exploded = False
 
         self.boss_active = False
-        self.boss_max_hp = 100
+        self.boss_max_hp = 500
         self.boss_hp = self.boss_max_hp
         self.boss_hit_time = 0
         self.boss_flash_duration = 80
@@ -136,6 +150,7 @@ class Game:
         self.boss_direction = 2
         self.boss_move_timer = 0
         self.boss_shoot_timer = 0
+        self.boss_pattern_shot_count = 0
         self.boss_bullet_group = pygame.sprite.Group()
 
         self.boss_explosion_group = pygame.sprite.Group()
@@ -151,7 +166,7 @@ class Game:
         )
         self.boss_damage_sound.set_volume(0.4)
 
-        
+
 
         self.bg_video = cv2.VideoCapture(
             'assets/video/background.mp4'
@@ -195,20 +210,71 @@ class Game:
         if self.stage_phase not in ("wave1", "wave2"):
             return
 
-        if self.killed_enemies >= 10:
+        if self.wave_group_index >= 4:
+            return
+
+        if len(self.enemy_group) > 0:
             return
 
         self.timer += 1
 
-        if self.timer > 50:
+        if self.timer < 60:
+            return
+
+        formations = [
+            # Grupo 1: entrada desde la izquierda
+            [
+                (40, -30, 100, 1, 3),
+                (90, -70, 100, 1, 3),
+                (140, -110, 100, 1, 3),
+                (190, -150, 100, 1, 3),
+            ],
+
+            # Grupo 2: entrada desde la derecha
+            [
+                (410, -30, 100, -1, 3),
+                (460, -70, 100, -1, 3),
+                (510, -110, 100, -1, 3),
+                (560, -150, 100, -1, 3),
+            ],
+
+            # Grupo 3: formación abierta en V
+            [
+                (240, -30, 90, 1, 5),
+                (360, -30, 90, -1, 5),
+                (190, -80, 135, 1, 5),
+                (410, -80, 135, -1, 5),
+            ],
+
+            # Grupo 4: dos columnas de cuatro
+            [
+                (190, -40, 80, 0, 3),
+                (410, -40, 80, 0, 3),
+                (190, -90, 125, 0, 3),
+                (410, -90, 125, 0, 3),
+                (190, -140, 170, 0, 3),
+                (410, -140, 170, 0, 3),
+                (190, -190, 215, 0, 3),
+                (410, -190, 215, 0, 3),
+            ],
+        ]
+
+        formation = formations[self.wave_group_index]
+
+        for x, y, target_y, direction, shots in formation:
             Enemy(
                 self.enemy_group,
-                random.randint(50, 550),
-                0,
+                x,
+                y,
                 self.player.bullet_group,
-                self.enemy_killed
+                self.enemy_killed,
+                target_y=target_y,
+                move_direction=direction,
+                shot_count=shots
             )
-            self.timer = 0
+
+        self.wave_group_index += 1
+        self.timer = 0
 
     def player_death(self):
         if len(self.player_group) == 0:
@@ -304,12 +370,26 @@ class Game:
 
         self.subboss_shoot_timer += 1
 
-        if self.subboss_shoot_timer >= 100:
-            EnemyBullet(
-                self.subboss_bullet_group,
-                self.subboss_rect.centerx,
-                self.subboss_rect.bottom
-            )
+        # El segundo patrón comienza cuando pierde la mitad de la vida
+        if self.subboss_hp <= self.subboss_max_hp // 2:
+            interval = 65
+            directions = [-3, -2, -1, 0, 1, 2, 3]
+            speed = 3.5
+        else:
+            interval = 90
+            directions = [-2, -1, 0, 1, 2]
+            speed = 3
+
+        if self.subboss_shoot_timer >= interval:
+            for direction in directions:
+                EnemyBullet(
+                    self.subboss_bullet_group,
+                    self.subboss_rect.centerx,
+                    self.subboss_rect.bottom,
+                    speed=speed,
+                    direction=direction
+                )
+
             self.subboss_shoot_timer = 0
 
     def subboss_collision(self):
@@ -399,13 +479,75 @@ class Game:
 
         self.boss_shoot_timer += 1
 
-        if self.boss_shoot_timer >= 100:
-            EnemyBullet(
-                self.boss_bullet_group,
-                self.boss_rect.centerx,
-                self.boss_rect.bottom
-            )
-            self.boss_shoot_timer = 0
+        # Dirección desde Minoriko hacia Reimu
+        dx = self.player.rect.centerx - self.boss_rect.centerx
+        dy = self.player.rect.centery - self.boss_rect.bottom
+        base_angle = math.atan2(dy, dx)
+
+        # Patrón 1: abanico dirigido
+        if self.boss_hp > 300:
+            interval = 80
+
+            if self.boss_shoot_timer >= interval:
+                offsets = [-0.4, -0.2, 0, 0.2, 0.4]
+
+                for offset in offsets:
+                    angle = base_angle + offset
+                    speed = 3.5
+
+                    EnemyBullet(
+                        self.boss_bullet_group,
+                        self.boss_rect.centerx,
+                        self.boss_rect.bottom,
+                        velocity_x=math.cos(angle) * speed,
+                        velocity_y=math.sin(angle) * speed
+                    )
+
+                self.boss_shoot_timer = 0
+
+        # Patrón 2: abanicos alternados más amplios
+        elif self.boss_hp > 150:
+            interval = 65
+
+            if self.boss_shoot_timer >= interval:
+                side = 1 if self.boss_pattern_shot_count % 2 == 0 else -1
+
+                for i in range(7):
+                    offset = (i - 3) * 0.17 * side
+                    angle = base_angle + offset
+                    speed = 3.8
+
+                    EnemyBullet(
+                        self.boss_bullet_group,
+                        self.boss_rect.centerx,
+                        self.boss_rect.bottom,
+                        velocity_x=math.cos(angle) * speed,
+                        velocity_y=math.sin(angle) * speed
+                    )
+
+                self.boss_pattern_shot_count += 1
+                self.boss_shoot_timer = 0
+
+        # Patrón 3: anillo de proyectiles
+        else:
+            interval = 55
+
+            if self.boss_shoot_timer >= interval:
+                bullet_count = 12
+                speed = 2.8
+
+                for i in range(bullet_count):
+                    angle = (2 * math.pi * i) / bullet_count
+
+                    EnemyBullet(
+                        self.boss_bullet_group,
+                        self.boss_rect.centerx,
+                        self.boss_rect.centery,
+                        velocity_x=math.cos(angle) * speed,
+                        velocity_y=math.sin(angle) * speed
+                    )
+
+                self.boss_shoot_timer = 0
 
     def boss_animation(self):
         if not self.boss_active:
@@ -422,8 +564,14 @@ class Game:
         if not self.dialogue_active:
             return
 
+        script = (
+            self.ending_script
+            if self.ending_dialogue
+            else self.dialogue_script
+        )
+
         speaker, speaker_img, listener, listener_img, message = (
-            self.dialogue_script[self.dialogue_index]
+            script[self.dialogue_index]
         )
 
         # Retratos
@@ -490,22 +638,53 @@ class Game:
         if event.key in (pygame.K_z, pygame.K_RETURN):
             self.dialogue_index += 1
 
-            if self.dialogue_index >= len(self.dialogue_script):
-                self.dialogue_active = False
-                self.boss_active = True
+            script = (
+                self.ending_script
+                if self.ending_dialogue
+                else self.dialogue_script
+            )
 
-                pygame.mixer.music.load(self.boss_bgm)
-                pygame.mixer.music.play(-1)
-                pygame.mixer.music.set_volume(0.3)
+            if self.dialogue_index >= len(script):
+                self.dialogue_active = False
+
+                if self.ending_dialogue:
+                    self.ending_dialogue = False
+                    self.ending_screen = True
+                    self.ending_screen_time = pygame.time.get_ticks()
+                else:
+                    self.boss_active = True
+
+                    pygame.mixer.music.load(self.boss_bgm)
+                    pygame.mixer.music.play(-1)
+                    pygame.mixer.music.set_volume(0.3)
+
 
     def run(self):
         self.scroll_bg()
+
+        if self.ending_screen:
+            self.screen.fill((0, 0, 0))
+
+            font = pygame.font.Font(None, 48)
+            text = font.render(
+                "Girls are now praying", True, WHITE
+            )
+            rect = text.get_rect(
+                center=(screen_width // 2, screen_height // 2)
+            )
+            self.screen.blit(text, rect)
+
+            if pygame.time.get_ticks() - self.ending_screen_time >= 3000:
+                pygame.quit()
+                raise SystemExit
+
+            return
 
         self.create_enemy()
 
         # Termina la primera oleada: aparece el sub-jefe
         if (self.stage_phase == "wave1"
-                and self.killed_enemies >= 10
+                and self.wave_group_index >= 4
                 and len(self.enemy_group) == 0):
             self.stage_phase = "subboss"
             self.subboss_active = True
@@ -514,7 +693,7 @@ class Game:
 
         # Termina la segunda oleada: comienza el diálogo de Minoriko
         if (self.stage_phase == "wave2"
-                and self.killed_enemies >= 10
+                and self.wave_group_index >= 4
                 and len(self.enemy_group) == 0):
             self.stage_phase = "minoriko"
             self.dialogue_index = 0
@@ -589,8 +768,9 @@ class Game:
                 (x, y, hp_width, bar_height)
             )
 
-        if self.boss_active or self.boss_intro_active or (
-                self.dialogue_active and self.boss_intro_done):
+        if not self.boss_exploded and (
+                self.boss_active or self.boss_intro_active or
+                (self.dialogue_active and self.boss_intro_done)):
 
             self.boss_animation()
             boss_image = self.boss_image
@@ -610,6 +790,17 @@ class Game:
         self.boss_explosion_group.draw(self.screen)
         self.boss_explosion_group.update()
 
+        if (
+                self.boss_exploded
+                and len(self.boss_explosion_group) == 0
+                and not self.ending_dialogue
+                and not self.ending_screen
+                and not self.dialogue_active
+        ):
+            self.dialogue_index = 0
+            self.dialogue_active = True
+            self.ending_dialogue = True
+
         self.subboss_explosion_group.draw(self.screen)
         self.subboss_explosion_group.update()
 
@@ -625,6 +816,7 @@ class Game:
                 and self.stage_phase == "subboss"):
             self.stage_phase = "wave2"
             self.killed_enemies = 0
+            self.wave_group_index = 0
             self.timer = 0
 
         self.dialogue()
