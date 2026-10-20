@@ -1,5 +1,4 @@
 import pygame
-
 from setting import *
 from player import Player
 from  enemy import Enemy
@@ -7,6 +6,7 @@ import random
 from support import draw_text
 from explosion import Explosion
 from enemy_bullet import EnemyBullet
+import cv2
 
 
 class Game:
@@ -69,9 +69,52 @@ class Game:
         self.timer = 0
         self.killed_enemies = 0
 
+        # Fases de la Stage 1
+        self.stage_phase = "wave1"
+
+        # Sub-jefe provisional: cuadrado rojo
+        self.subboss_active = False
+        self.subboss_max_hp = 100
+        self.subboss_hp = self.subboss_max_hp
+        self.subboss_rect = pygame.Rect(0, 0, 80, 80)
+        self.subboss_rect.midtop = (screen_width // 2, 80)
+
+        # Animación del sub-jefe
+        self.subboss_image_list = []
+
+        for i in range(5):
+            image = pygame.image.load(
+                f"assets/img/sub-boss/sub-boss{i}.png"
+            ).convert_alpha()
+
+            image = pygame.transform.scale(image, (80, 80))
+            self.subboss_image_list.append(image)
+
+        self.subboss_index = 0
+        self.subboss_image = self.subboss_image_list[0]
+        self.subboss_animation_speed = 0.05
+
+        # Movimiento
+        self.subboss_direction = 2
+        self.subboss_move_timer = 0
+
+        # Disparos
+        self.subboss_shoot_timer = 0
+        self.subboss_bullet_group = pygame.sprite.Group()
+
+        # Efecto de daño
+        self.subboss_hit_time = 0
+        self.subboss_flash_duration = 80
+
+        # Explosión
+        self.subboss_explosion_group = pygame.sprite.Group()
+        self.subboss_exploded = False
+
         self.boss_active = False
         self.boss_max_hp = 100
         self.boss_hp = self.boss_max_hp
+        self.boss_hit_time = 0
+        self.boss_flash_duration = 80
         self.boss_image_list = []
         for i in range(6):
             image = pygame.image.load(f"assets/img/boss/boss{i}.png")
@@ -103,44 +146,37 @@ class Game:
         )
         self.boss_explosion_sound.set_volume(0.2)
 
-        #背景
-        self.pre_bg_img = pygame.image.load('assets/img/background/background0.png')
-        self.bg_img = pygame.transform.scale(self.pre_bg_img, (screen_width, screen_height))
-        self.bg_y = 0
-        self.scroll_speed = 0.5
+        self.boss_damage_sound = pygame.mixer.Sound(
+            'assets/sound/damage.mp3'
+        )
+        self.boss_damage_sound.set_volume(0.4)
 
-        self.middle_bg_img = pygame.image.load(
-            'assets/img/background/background1.png'
-        ).convert_alpha()
+        
 
-        self.middle_bg_img = pygame.transform.scale(
-            self.middle_bg_img,
-            (screen_width, screen_height)
+        self.bg_video = cv2.VideoCapture(
+            'assets/video/background.mp4'
         )
 
-        self.middle_bg_y = 0
-        self.middle_bg_speed = 1
+        self.bg_video.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-        self.cloud_img = pygame.image.load(
-            'assets/img/background/background2.png'
-        ).convert_alpha()
+        self.bg_video_fps = self.bg_video.get(cv2.CAP_PROP_FPS)
+        if self.bg_video_fps <= 0:
+            self.bg_video_fps = 30
 
-        self.clouds = []
-
-        for i in range(6):
-            x = random.randint(0, screen_width - self.cloud_img.get_width())
-            y = random.randint(0, screen_height)
-            self.clouds.append([x, y])
-
-        self.cloud_speed = 1
+        self.bg_video_timer = 0
+        self.bg_video_frame = None
+        self.bg_video_surface = None
 
 
 
         #ゲームオーバー判定
         self.game_over = False
 
-        #BGM
-        pygame.mixer.music.load('assets/sound/bgm.mp3')
+        # BGM
+        self.normal_bgm = 'assets/sound/bgm.mp3'
+        self.boss_bgm = 'assets/sound/boss_bgm.mp3'
+
+        pygame.mixer.music.load(self.normal_bgm)
         pygame.mixer.music.play(-1)
         pygame.mixer.music.set_volume(0.3)
 
@@ -156,12 +192,16 @@ class Game:
         print("Game:", id(self), "| Enemigos derrotados:", self.killed_enemies)
 
     def create_enemy(self):
+        if self.stage_phase not in ("wave1", "wave2"):
+            return
+
         if self.killed_enemies >= 10:
             return
 
         self.timer += 1
+
         if self.timer > 50:
-            enemy = Enemy(
+            Enemy(
                 self.enemy_group,
                 random.randint(50, 550),
                 0,
@@ -183,44 +223,35 @@ class Game:
             self.game_over = False
 
     def scroll_bg(self):
-        self.bg_y = (self.bg_y + self.scroll_speed) % screen_height
+        self.bg_video_timer += 1
 
-        # Suelo rocoso
-        self.screen.blit(
-            self.bg_img,
-            (0, self.bg_y - screen_height)
-        )
-        self.screen.blit(
-            self.bg_img,
-            (0, self.bg_y)
-        )
+        # Controlar la velocidad de reproducción
+        frames_per_update = max(1, round(60 / self.bg_video_fps))
 
-        # Malla
-        self.middle_bg_y = (
-                                   self.middle_bg_y + self.middle_bg_speed
-                           ) % screen_height
+        if self.bg_video_timer >= frames_per_update:
+            self.bg_video_timer = 0
 
-        self.screen.blit(
-            self.middle_bg_img,
-            (0, self.middle_bg_y - screen_height)
-        )
-        self.screen.blit(
-            self.middle_bg_img,
-            (0, self.middle_bg_y)
-        )
+            success, frame = self.bg_video.read()
 
-        # Niebla / nubes
-        for cloud in self.clouds:
-            cloud[1] += self.cloud_speed
+            # Volver al inicio al terminar el video
+            if not success:
+                self.bg_video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                success, frame = self.bg_video.read()
 
-            if cloud[1] > screen_height:
-                cloud[1] = -self.cloud_img.get_height()
-                cloud[0] = random.randint(
-                    0,
-                    screen_width - self.cloud_img.get_width()
+            if success:
+                frame = cv2.resize(
+                    frame,
+                    (screen_width, screen_height)
                 )
 
-            self.screen.blit(self.cloud_img, cloud)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                self.bg_video_surface = pygame.surfarray.make_surface(
+                    frame.swapaxes(0, 1)
+                )
+
+        if self.bg_video_surface is not None:
+            self.screen.blit(self.bg_video_surface, (0, 0))
 
     def draw_boss_hp(self):
         bar_width = 120
@@ -243,6 +274,71 @@ class Game:
             (x, y, hp_width, bar_height)
         )
 
+    def subboss_move(self):
+        if not self.subboss_active:
+            return
+
+        self.subboss_rect.x += self.subboss_direction
+        self.subboss_move_timer += 1
+
+        if (self.subboss_rect.left <= 0
+                or self.subboss_rect.right >= screen_width):
+            self.subboss_direction *= -1
+
+    def subboss_animation(self):
+        if not self.subboss_active:
+            return
+
+        self.subboss_index += self.subboss_animation_speed
+
+        if self.subboss_index >= len(self.subboss_image_list):
+            self.subboss_index = 0
+
+        self.subboss_image = self.subboss_image_list[
+            int(self.subboss_index)
+        ]
+
+    def subboss_shoot(self):
+        if not self.subboss_active:
+            return
+
+        self.subboss_shoot_timer += 1
+
+        if self.subboss_shoot_timer >= 100:
+            EnemyBullet(
+                self.subboss_bullet_group,
+                self.subboss_rect.centerx,
+                self.subboss_rect.bottom
+            )
+            self.subboss_shoot_timer = 0
+
+    def subboss_collision(self):
+        if not self.subboss_active:
+            return
+
+        for bullet in self.player.bullet_group.copy():
+            if self.subboss_rect.colliderect(bullet.rect):
+                bullet.kill()
+
+                self.boss_damage_sound.play()
+                self.subboss_hit_time = pygame.time.get_ticks()
+
+                self.subboss_hp -= 10
+                self.subboss_hp = max(0, self.subboss_hp)
+
+                if self.subboss_hp == 0 and not self.subboss_exploded:
+                    self.subboss_active = False
+                    self.subboss_exploded = True
+
+                    Explosion(
+                        self.subboss_explosion_group,
+                        self.subboss_rect.centerx,
+                        self.subboss_rect.centery
+                    )
+
+                    self.boss_explosion_sound.play()
+                    break
+
     def boss_collision(self):
         if not self.boss_active:
             return
@@ -250,6 +346,8 @@ class Game:
         for bullet in self.player.bullet_group.copy():
             if self.boss_rect.colliderect(bullet.rect):
                 bullet.kill()
+                self.boss_damage_sound.play()
+                self.boss_hit_time = pygame.time.get_ticks()
                 self.boss_hp -= 10
                 self.boss_hp = max(0, self.boss_hp)
                 print("Vida del jefe:", self.boss_hp)
@@ -396,17 +494,30 @@ class Game:
                 self.dialogue_active = False
                 self.boss_active = True
 
+                pygame.mixer.music.load(self.boss_bgm)
+                pygame.mixer.music.play(-1)
+                pygame.mixer.music.set_volume(0.3)
+
     def run(self):
         self.scroll_bg()
 
         self.create_enemy()
 
-        if (self.killed_enemies >= 10
-                and len(self.enemy_group) == 0
-                and not self.boss_exploded
-                and not self.dialogue_active
-                and not self.boss_active
-                and self.dialogue_index == 0):
+        # Termina la primera oleada: aparece el sub-jefe
+        if (self.stage_phase == "wave1"
+                and self.killed_enemies >= 10
+                and len(self.enemy_group) == 0):
+            self.stage_phase = "subboss"
+            self.subboss_active = True
+            self.subboss_hp = self.subboss_max_hp
+            self.subboss_rect.midtop = (screen_width // 2, 80)
+
+        # Termina la segunda oleada: comienza el diálogo de Minoriko
+        if (self.stage_phase == "wave2"
+                and self.killed_enemies >= 10
+                and len(self.enemy_group) == 0):
+            self.stage_phase = "minoriko"
+            self.dialogue_index = 0
             self.dialogue_active = True
 
         self.player_death()
@@ -414,6 +525,10 @@ class Game:
         self.reset()
 
         self.boss_intro()
+
+        self.subboss_collision()
+        self.subboss_move()
+        self.subboss_shoot()
 
         self.boss_collision()
         self.boss_move()
@@ -431,23 +546,89 @@ class Game:
             self.player_group.draw(self.screen)
             self.player_group.update()
         self.player.collision_boss_bullet(self.boss_bullet_group)
+        self.player.collision_boss_bullet(self.subboss_bullet_group)
         self.enemy_group.draw(self.screen)
         self.enemy_group.update()
+
+        # Dibujar el sub-jefe animado
+        if self.subboss_active:
+            self.subboss_animation()
+
+            subboss_image = self.subboss_image
+
+            # Parpadeo blanco al recibir daño
+            if (pygame.time.get_ticks() - self.subboss_hit_time
+                    < self.subboss_flash_duration):
+                subboss_image = subboss_image.copy()
+                subboss_image.fill(
+                    (255, 255, 255),
+                    special_flags=pygame.BLEND_RGB_ADD
+                )
+
+            self.screen.blit(subboss_image, self.subboss_rect)
+
+            # Barra de vida
+            bar_width = 120
+            bar_height = 10
+            x = self.subboss_rect.centerx - bar_width // 2
+            y = self.subboss_rect.top - 20
+
+            pygame.draw.rect(
+                self.screen,
+                (100, 100, 100),
+                (x, y, bar_width, bar_height)
+            )
+
+            hp_width = int(
+                bar_width * self.subboss_hp / self.subboss_max_hp
+            )
+
+            pygame.draw.rect(
+                self.screen,
+                GREEN,
+                (x, y, hp_width, bar_height)
+            )
 
         if self.boss_active or self.boss_intro_active or (
                 self.dialogue_active and self.boss_intro_done):
 
             self.boss_animation()
-            self.screen.blit(self.boss_image, self.boss_rect)
+            boss_image = self.boss_image
+
+            if pygame.time.get_ticks() - self.boss_hit_time < self.boss_flash_duration:
+                boss_image = boss_image.copy()
+                boss_image.fill(
+                    (255, 255, 255),
+                    special_flags=pygame.BLEND_RGB_ADD
+                )
+
+            self.screen.blit(boss_image, self.boss_rect)
 
             if self.boss_active:
                 self.draw_boss_hp()
 
         self.boss_explosion_group.draw(self.screen)
         self.boss_explosion_group.update()
+
+        self.subboss_explosion_group.draw(self.screen)
+        self.subboss_explosion_group.update()
+
         self.boss_bullet_group.draw(self.screen)
         self.boss_bullet_group.update()
+
+        self.subboss_bullet_group.draw(self.screen)
+        self.subboss_bullet_group.update()
+
+        # La segunda oleada comienza tras terminar la explosión
+        if (self.subboss_exploded
+                and len(self.subboss_explosion_group) == 0
+                and self.stage_phase == "subboss"):
+            self.stage_phase = "wave2"
+            self.killed_enemies = 0
+            self.timer = 0
+
         self.dialogue()
+
 
 
 

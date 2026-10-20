@@ -15,8 +15,8 @@ class Bullet(pygame.sprite.Sprite):
 
         self.index = 0
         self.pre_image = self.image_list[self.index]
-        self.image = pygame.transform.scale(self.pre_image,(24,48))
-        self.rect = self.image.get_rect(midbottom=(x,y))
+        self.image = pygame.transform.scale(self.pre_image, (12, 32))
+        self.rect = self.image.get_rect(midbottom=(x, y))
 
         #移動
         self.speed = 8
@@ -32,7 +32,7 @@ class Bullet(pygame.sprite.Sprite):
             self.index = 0
 
         self.pre_image = self.image_list[int(self.index)]
-        self.image = pygame.transform.scale(self.pre_image, (24, 48))
+        self.image = pygame.transform.scale(self.pre_image, (12, 32))
 
     def move(self):
         self.rect.y -= self.speed

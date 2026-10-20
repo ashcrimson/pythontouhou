@@ -67,7 +67,22 @@ class Player(pygame.sprite.Sprite):
             self.index = 0
 
         if key[pygame.K_z] and self.fire == False:
-            bullet = Bullet(self.bullet_group, self.rect.centerx, self.rect.top)
+            Bullet(
+                self.bullet_group,
+                self.rect.centerx,
+                self.rect.top
+            )
+            Bullet(
+                self.bullet_group,
+                self.rect.centerx - 15,
+                self.rect.top + 5
+            )
+            Bullet(
+                self.bullet_group,
+                self.rect.centerx + 15,
+                self.rect.top + 5
+            )
+
             self.fire = True
             self.shot_sound.play()
 
