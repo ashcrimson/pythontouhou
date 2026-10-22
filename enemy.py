@@ -43,7 +43,7 @@ class Enemy(pygame.sprite.Sprite):
         self.bullet_count = bullet_count
         self.bullet_speed = bullet_speed
 
-        self.health = 2
+        self.health = 1
         self.alive = True
         self.explosion = False
 

@@ -92,7 +92,7 @@ class Game:
 
         # Sub-jefe provisional: cuadrado rojo
         self.subboss_active = False
-        self.subboss_max_hp = 300
+        self.subboss_max_hp = 600
         self.subboss_hp = self.subboss_max_hp
         self.subboss_rect = pygame.Rect(0, 0, 80, 80)
         self.subboss_rect.midtop = (screen_width // 2, 80)
@@ -107,6 +107,48 @@ class Game:
 
             image = pygame.transform.scale(image, (80, 80))
             self.subboss_image_list.append(image)
+
+            # Spell Card de Shizuha
+            self.subboss_spell_image = pygame.image.load(
+                "assets/img/sub-boss/sub-boss_spell.png"
+            ).convert_alpha()
+
+            # Fondo especial del sub-jefe
+            self.subboss_background = pygame.image.load(
+                "assets/img/background/sub-boss_background.png"
+            ).convert()
+
+            self.boss_background = pygame.image.load(
+                "assets/img/background/sub-boss_background.png"
+            ).convert()
+
+            self.boss_background = pygame.transform.scale(
+                self.boss_background,
+                (screen_width, screen_height)
+            )
+
+            self.subboss_background = pygame.transform.scale(
+                self.subboss_background,
+                (screen_width, screen_height)
+            )
+
+            # Ajustar al alto de la pantalla conservando proporciones
+            spell_height = screen_height
+            spell_width = int(
+                self.subboss_spell_image.get_width()
+                * spell_height
+                / self.subboss_spell_image.get_height()
+            )
+
+            self.subboss_spell_image = pygame.transform.smoothscale(
+                self.subboss_spell_image,
+                (spell_width, spell_height)
+            )
+
+            self.subboss_spell_active = False
+            self.subboss_spell_x = screen_width
+            self.subboss_spell_speed = 18
+            self.subboss_spell_timer = 0
 
         self.subboss_index = 0
         self.subboss_image = self.subboss_image_list[0]
@@ -129,7 +171,7 @@ class Game:
         self.subboss_exploded = False
 
         self.boss_active = False
-        self.boss_max_hp = 500
+        self.boss_max_hp = 1000
         self.boss_hp = self.boss_max_hp
         self.boss_hit_time = 0
         self.boss_flash_duration = 80
@@ -138,6 +180,27 @@ class Game:
             image = pygame.image.load(f"assets/img/boss/boss{i}.png")
             image = pygame.transform.scale(image, (80, 80))
             self.boss_image_list.append(image)
+
+            # Spell Card de Minoriko
+            self.boss_spell_image = pygame.image.load(
+                "assets/img/boss/boss_spell.png"
+            ).convert_alpha()
+
+            spell_height = screen_height
+            spell_width = int(
+                self.boss_spell_image.get_width()
+                * spell_height
+                / self.boss_spell_image.get_height()
+            )
+
+            self.boss_spell_image = pygame.transform.smoothscale(
+                self.boss_spell_image,
+                (spell_width, spell_height)
+            )
+
+            self.boss_spell_active = False
+            self.boss_spell_x = screen_width
+            self.boss_spell_speed = 18
 
         self.boss_index = 0
         self.boss_image = self.boss_image_list[self.boss_index]
@@ -388,6 +451,24 @@ class Game:
         )
         self.screen.blit(label, (15, 30))
 
+    def subboss_spell_animation(self):
+        if not self.subboss_spell_active:
+            return
+
+        self.subboss_spell_timer += 1
+        self.subboss_spell_x -= self.subboss_spell_speed
+
+        self.screen.blit(
+            self.subboss_spell_image,
+            (int(self.subboss_spell_x), 0)
+        )
+
+        # Cuando la ilustración sale completamente por la izquierda,
+        # termina la presentación y comienza el combate.
+        if self.subboss_spell_x + self.subboss_spell_image.get_width() <= 0:
+            self.subboss_spell_active = False
+            self.subboss_active = True
+
     def subboss_move(self):
         if not self.subboss_active:
             return
@@ -517,6 +598,21 @@ class Game:
             self.boss_rect.y = self.boss_intro_target_y
             self.boss_intro_active = False
             self.boss_intro_done = True
+
+    def boss_spell_animation(self):
+        if not self.boss_spell_active:
+            return
+
+        self.boss_spell_x -= self.boss_spell_speed
+
+        self.screen.blit(
+            self.boss_spell_image,
+            (int(self.boss_spell_x), 0)
+        )
+
+        if self.boss_spell_x + self.boss_spell_image.get_width() <= 0:
+            self.boss_spell_active = False
+            self.boss_active = True
     def boss_move(self):
         if not self.boss_active:
             return
@@ -706,7 +802,9 @@ class Game:
                     self.ending_screen = True
                     self.ending_screen_time = pygame.time.get_ticks()
                 else:
-                    self.boss_active = True
+                    self.boss_active = False
+                    self.boss_spell_active = True
+                    self.boss_spell_x = screen_width
 
                     pygame.mixer.music.load(self.boss_bgm)
                     pygame.mixer.music.play(-1)
@@ -714,7 +812,12 @@ class Game:
 
 
     def run(self):
-        self.scroll_bg()
+        if self.boss_spell_active or self.boss_active:
+            self.screen.blit(self.boss_background, (0, 0))
+        elif self.subboss_spell_active or self.subboss_active:
+            self.screen.blit(self.subboss_background, (0, 0))
+        else:
+            self.scroll_bg()
 
         if self.ending_screen:
             self.screen.fill((0, 0, 0))
@@ -741,9 +844,13 @@ class Game:
                 and self.wave_group_index >= 4
                 and len(self.enemy_group) == 0):
             self.stage_phase = "subboss"
-            self.subboss_active = True
+            self.subboss_active = False
             self.subboss_hp = self.subboss_max_hp
             self.subboss_rect.midtop = (screen_width // 2, 80)
+
+            self.subboss_spell_active = True
+            self.subboss_spell_x = screen_width
+            self.subboss_spell_timer = 0
 
         # Termina la segunda oleada: comienza el diálogo de Minoriko
         if (self.stage_phase == "wave2"
@@ -758,10 +865,10 @@ class Game:
         self.reset()
 
         self.boss_intro()
-
-        self.subboss_collision()
-        self.subboss_move()
-        self.subboss_shoot()
+        if not self.subboss_spell_active:
+            self.subboss_collision()
+            self.subboss_move()
+            self.subboss_shoot()
 
         self.boss_collision()
         self.boss_move()
@@ -875,6 +982,8 @@ class Game:
             self.wave_group_index = 0
             self.timer = 0
 
+        self.subboss_spell_animation()
+        self.boss_spell_animation()
         self.draw_power()
         self.dialogue()
 
