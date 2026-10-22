@@ -1,101 +1,112 @@
+import math
+
 import pygame
 
-import explosion
 from setting import *
-import random
 from explosion import Explosion
 from enemy_bullet import EnemyBullet
 
+
 class Enemy(pygame.sprite.Sprite):
+
     def __init__(
             self, groups, x, y, bullet_group, enemy_killed,
-            target_y=100, move_direction=0, shot_count=3
+            entry_target, exit_target, shot_delays, target_provider,
+            bullet_count=1, bullet_speed=3.2
     ):
         super().__init__(groups)
 
         self.screen = pygame.display.get_surface()
-
-        #グループ
         self.bullet_group = bullet_group
         self.enemy_killed = enemy_killed
+        self.target_provider = target_provider
         self.enemy_bullet_group = pygame.sprite.Group()
         self.exposion_group = pygame.sprite.Group()
 
-        #画像
-        self.image_list = []
-        for i in range(5):
-            image = pygame.image.load(f'assets/img/enemy/enemy{i}.png')
-            self.image_list.append(image)
-
+        self.image_list = [
+            pygame.image.load(f"assets/img/enemy/enemy{i}.png")
+            for i in range(5)
+        ]
         self.index = 0
         self.pre_image = self.image_list[self.index]
         self.image = pygame.transform.scale(self.pre_image, (50, 50))
-        self.rect = self.image.get_rect(center=(x,y))
+        self.rect = self.image.get_rect(center=(x, y))
 
-        # Movimiento y ataque
-        self.target_y = target_y
-        self.move_direction = move_direction
-        self.shot_count = shot_count
+        self.position = pygame.math.Vector2(self.rect.center)
+        self.entry_target = pygame.math.Vector2(entry_target)
+        self.exit_target = pygame.math.Vector2(exit_target)
+        self.path_speed = 2.4
         self.state = "enter"
-        self.speed = 2
-        self.shoot_timer = random.randint(40, 70)
+        self.shot_delays = shot_delays
+        self.shot_timer = 0
         self.shots_fired = 0
-        self.max_shots = 2
+        self.bullet_count = bullet_count
+        self.bullet_speed = bullet_speed
 
-        #体力
-        self.health = 3
+        self.health = 2
         self.alive = True
-
-        #爆発
         self.explosion = False
 
-        #効果音
-        self.explosion_sound = pygame.mixer.Sound('assets/sound/explosion.mp3')
+        self.explosion_sound = pygame.mixer.Sound(
+            "assets/sound/explosion.mp3"
+        )
         self.explosion_sound.set_volume(0.2)
+
+    def move_toward(self, target):
+        distance = target - self.position
+
+        if distance.length_squared() <= self.path_speed ** 2:
+            self.position = target
+            self.rect.center = round(self.position.x), round(self.position.y)
+            return True
+
+        self.position += distance.normalize() * self.path_speed
+        self.rect.center = round(self.position.x), round(self.position.y)
+        return False
 
     def move(self):
         if self.state == "enter":
-            self.rect.x += self.move_direction
-            self.rect.y += self.speed
-
-            if self.rect.top >= self.target_y:
-                self.rect.top = self.target_y
+            if self.move_toward(self.entry_target):
                 self.state = "attack"
-
         elif self.state == "retreat":
-            self.rect.y -= 3
+            if self.move_toward(self.exit_target):
+                self.state = "exit"
 
     def shoot(self):
         if self.state != "attack":
             return
 
-        self.shoot_timer += 1
+        self.shot_timer += 1
 
-        if self.shoot_timer >= 70:
-            if self.shot_count == 5:
-                directions = [-2, -1, 0, 1, 2]
-                speed = 3.2
-            else:
-                directions = [-1.5, 0, 1.5]
-                speed = 3.8
-
-            for direction in directions:
-                EnemyBullet(
-                    self.enemy_bullet_group,
-                    self.rect.centerx,
-                    self.rect.bottom,
-                    speed=speed,
-                    direction=direction
-                )
-
-            self.shoot_timer = 0
+        if (
+                self.shots_fired < len(self.shot_delays)
+                and self.shot_timer >= self.shot_delays[self.shots_fired]
+        ):
+            self.fire_aimed_burst()
             self.shots_fired += 1
 
-            if self.shots_fired >= self.max_shots:
-                self.state = "retreat"
+        if self.shots_fired == len(self.shot_delays):
+            self.state = "retreat"
+
+    def fire_aimed_burst(self):
+        target_x, target_y = self.target_provider()
+        origin = pygame.math.Vector2(self.rect.centerx, self.rect.bottom)
+        target = pygame.math.Vector2(target_x, target_y)
+        base_angle = math.atan2(target.y - origin.y, target.x - origin.x)
+
+        for index in range(self.bullet_count):
+            angle_offset = (index - (self.bullet_count - 1) / 2) * 0.12
+            angle = base_angle + angle_offset
+            EnemyBullet(
+                self.enemy_bullet_group,
+                origin.x,
+                origin.y,
+                velocity_x=math.cos(angle) * self.bullet_speed,
+                velocity_y=math.sin(angle) * self.bullet_speed
+            )
 
     def animation(self):
-        if self.alive == True:
+        if self.alive:
             self.index += 0.15
             if self.index >= len(self.image_list):
                 self.index = 0
@@ -106,12 +117,11 @@ class Enemy(pygame.sprite.Sprite):
             self.image.set_alpha(0)
 
     def check_off_screen(self):
-        if self.state == "retreat" and self.rect.bottom < 0:
-            if len(self.enemy_bullet_group) == 0:
-                self.kill()
+        if self.state == "exit" and len(self.enemy_bullet_group) == 0:
+            self.kill()
 
     def collision_bullet(self):
-        if self.rect.top < 0 or self.state == "retreat":
+        if self.state == "exit":
             return
 
         for bullet in self.bullet_group:
@@ -124,11 +134,12 @@ class Enemy(pygame.sprite.Sprite):
                     break
 
     def check_death(self):
-        if self.alive == False and self.explosion == False:
-            self.speed = 0
-            explosion = Explosion(self.exposion_group, self.rect.centerx, self.rect.centery)
+        if not self.alive and not self.explosion:
+            Explosion(
+                self.exposion_group, self.rect.centerx, self.rect.centery
+            )
             self.explosion = True
-            self.enemy_killed()
+            self.enemy_killed(self.rect.center)
             self.explosion_sound.play()
 
         if self.explosion and len(self.exposion_group) == 0:
@@ -143,7 +154,6 @@ class Enemy(pygame.sprite.Sprite):
         self.collision_bullet()
         self.check_death()
 
-        #グループの描画と更新
         self.exposion_group.draw(self.screen)
         self.exposion_group.update()
         self.enemy_bullet_group.draw(self.screen)

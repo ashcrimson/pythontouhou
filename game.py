@@ -6,6 +6,7 @@ import random
 from support import draw_text
 from explosion import Explosion
 from enemy_bullet import EnemyBullet
+from power_item import PowerItem
 import cv2
 import math
 
@@ -19,7 +20,10 @@ class Game:
         self.create_group()
 
         #nose
-        self.player = Player(self.player_group, 300, 500, self.enemy_group)
+        self.player = Player(
+            self.player_group, 300, 500, self.enemy_group,
+            self.get_homing_targets
+        )
 
         #敵
         self.reimu_portraits = []
@@ -198,13 +202,25 @@ class Game:
     def create_group(self):
         self.player_group = pygame.sprite.GroupSingle()
         self.enemy_group = pygame.sprite.Group()
+        self.power_item_group = pygame.sprite.Group()
+
+    def get_homing_targets(self):
+        targets = list(self.enemy_group)
+
+        if self.subboss_active:
+            targets.append(self.subboss_rect)
+
+        if self.boss_active:
+            targets.append(self.boss_rect)
+
+        return targets
 
     # def enemy_killed(self):
     #     self.killed_enemies += 1
     #     print("Enemigos derrotados:", self.killed_enemies)
-    def enemy_killed(self):
+    def enemy_killed(self, position):
         self.killed_enemies += 1
-        print("Game:", id(self), "| Enemigos derrotados:", self.killed_enemies)
+        PowerItem(self.power_item_group, position[0], position[1])
 
     def create_enemy(self):
         if self.stage_phase not in ("wave1", "wave2"):
@@ -221,60 +237,70 @@ class Game:
         if self.timer < 60:
             return
 
-        formations = [
-            # Grupo 1: entrada desde la izquierda
-            [
-                (40, -30, 100, 1, 3),
-                (90, -70, 100, 1, 3),
-                (140, -110, 100, 1, 3),
-                (190, -150, 100, 1, 3),
-            ],
-
-            # Grupo 2: entrada desde la derecha
-            [
-                (410, -30, 100, -1, 3),
-                (460, -70, 100, -1, 3),
-                (510, -110, 100, -1, 3),
-                (560, -150, 100, -1, 3),
-            ],
-
-            # Grupo 3: formación abierta en V
-            [
-                (240, -30, 90, 1, 5),
-                (360, -30, 90, -1, 5),
-                (190, -80, 135, 1, 5),
-                (410, -80, 135, -1, 5),
-            ],
-
-            # Grupo 4: dos columnas de cuatro
-            [
-                (190, -40, 80, 0, 3),
-                (410, -40, 80, 0, 3),
-                (190, -90, 125, 0, 3),
-                (410, -90, 125, 0, 3),
-                (190, -140, 170, 0, 3),
-                (410, -140, 170, 0, 3),
-                (190, -190, 215, 0, 3),
-                (410, -190, 215, 0, 3),
-            ],
-        ]
-
+        formations = self.normal_formations(self.stage_phase)
         formation = formations[self.wave_group_index]
 
-        for x, y, target_y, direction, shots in formation:
+        for x, y, entry_x, entry_y, exit_x, exit_y, delays, bullet_count in formation:
             Enemy(
                 self.enemy_group,
                 x,
                 y,
                 self.player.bullet_group,
                 self.enemy_killed,
-                target_y=target_y,
-                move_direction=direction,
-                shot_count=shots
+                entry_target=(entry_x, entry_y),
+                exit_target=(exit_x, exit_y),
+                shot_delays=delays,
+                target_provider=lambda: self.player.rect.center,
+                bullet_count=bullet_count
             )
 
         self.wave_group_index += 1
         self.timer = 0
+
+    def normal_formations(self, stage_phase):
+        if stage_phase == "wave1":
+            left_count = 14
+            right_count = 14
+            crossing_count = 9
+            column_rows = 4
+            final_formation = [
+                (300, -35 - column_rows * 62, 300, 300, 300, 650, (26,), 1)
+            ]
+        else:
+            left_count = 4
+            right_count = 4
+            crossing_count = 2
+            column_rows = 2
+            final_formation = []
+
+        return [
+            [
+                (-35, -25 - index * 32, 105 + index * 24,
+                 100 + index * 14, 640, 205 + index * 24, (22,), 1)
+                for index in range(left_count)
+            ],
+            [
+                (635, -25 - index * 32, 495 - index * 24,
+                 100 + index * 14, -40, 205 + index * 24, (22,), 1)
+                for index in range(right_count)
+            ],
+            [
+                (-35, -35 - index * 48, 170 + index * 28,
+                 105 + index * 24, 640, 230 + index * 24, (18, 42), 1)
+                for index in range(crossing_count)
+            ] + [
+                (635, -35 - index * 48, 430 - index * 28,
+                 105 + index * 24, -40, 230 + index * 24, (18, 42), 1)
+                for index in range(crossing_count)
+            ],
+            [
+                (150 + column * 100, -35 - row * 62,
+                 205 + column * 95, 100 + row * 55,
+                 85 + column * 150, 650, (26,), 1)
+                for row in range(column_rows)
+                for column in range(2)
+            ] + final_formation,
+        ]
 
     def player_death(self):
         if len(self.player_group) == 0:
@@ -284,8 +310,12 @@ class Game:
     def reset(self):
         key = pygame.key.get_pressed()
         if self.game_over and key[pygame.K_SPACE]:
-            self.player = Player(self.player_group, 300, 500, self.enemy_group)
+            self.player = Player(
+                self.player_group, 300, 500, self.enemy_group,
+                self.get_homing_targets
+            )
             self.enemy_group.empty()
+            self.power_item_group.empty()
             self.game_over = False
 
     def scroll_bg(self):
@@ -339,6 +369,24 @@ class Game:
             GREEN,
             (x, y, hp_width, bar_height)
         )
+
+    def draw_power(self):
+        bar_width = 140
+        bar_height = 10
+        power_ratio = self.player.power / self.player.max_power
+
+        pygame.draw.rect(self.screen, (40, 40, 40), (15, 15, bar_width, bar_height))
+        pygame.draw.rect(
+            self.screen,
+            (230, 80, 80),
+            (15, 15, int(bar_width * power_ratio), bar_height)
+        )
+
+        font = pygame.font.Font(None, 24)
+        label = font.render(
+            f"POWER {self.player.power:.2f}", True, WHITE
+        )
+        self.screen.blit(label, (15, 30))
 
     def subboss_move(self):
         if not self.subboss_active:
@@ -416,6 +464,12 @@ class Game:
                         self.subboss_rect.centery
                     )
 
+                    PowerItem(
+                        self.power_item_group,
+                        self.subboss_rect.centerx,
+                        self.subboss_rect.centery,
+                        value=0.30
+                    )
                     self.boss_explosion_sound.play()
                     break
 
@@ -728,6 +782,8 @@ class Game:
         self.player.collision_boss_bullet(self.subboss_bullet_group)
         self.enemy_group.draw(self.screen)
         self.enemy_group.update()
+        self.power_item_group.update(self.player)
+        self.power_item_group.draw(self.screen)
 
         # Dibujar el sub-jefe animado
         if self.subboss_active:
@@ -819,6 +875,7 @@ class Game:
             self.wave_group_index = 0
             self.timer = 0
 
+        self.draw_power()
         self.dialogue()
 
 

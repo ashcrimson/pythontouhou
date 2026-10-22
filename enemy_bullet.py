@@ -4,29 +4,34 @@ from setting import *
 
 
 class EnemyBullet(pygame.sprite.Sprite):
+    images = None
+
     def __init__(
         self, groups, x, y, speed=5, direction=0,
         velocity_x=None, velocity_y=None
     ):
         super().__init__(groups)
 
-        self.image_list = []
-        for i in range(2):
-            image = pygame.image.load(
-                f"assets/img/bullet/enemy_shot{i}.png"
-            ).convert_alpha()
-            self.image_list.append(image)
+        if EnemyBullet.images is None:
+            EnemyBullet.images = [
+                pygame.image.load(
+                    f"assets/img/bullet/enemy_shot{i}.png"
+                ).convert_alpha()
+                for i in range(2)
+            ]
 
+        self.image_list = EnemyBullet.images
         self.index = 0
         self.image = pygame.transform.scale(
             self.image_list[0], (24, 48)
         )
         self.rect = self.image.get_rect(midtop=(x, y))
+        self.position = pygame.math.Vector2(self.rect.center)
 
-        self.speed = speed
-        self.direction = direction
-        self.velocity_x = velocity_x
-        self.velocity_y = velocity_y
+        if velocity_x is None:
+            self.velocity = pygame.math.Vector2(direction, speed)
+        else:
+            self.velocity = pygame.math.Vector2(velocity_x, velocity_y)
 
     def check_off_screen(self):
         if (
@@ -47,12 +52,8 @@ class EnemyBullet(pygame.sprite.Sprite):
         )
 
     def move(self):
-        if self.velocity_x is not None:
-            self.rect.x += self.velocity_x
-            self.rect.y += self.velocity_y
-        else:
-            self.rect.x += self.direction
-            self.rect.y += self.speed
+        self.position += self.velocity
+        self.rect.center = round(self.position.x), round(self.position.y)
 
     def update(self):
         self.move()
