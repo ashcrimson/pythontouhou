@@ -88,7 +88,7 @@ class Player(pygame.sprite.Sprite):
             self.fire = True
             self.shot_sound.play()
 
-        if key[pygame.K_x] and self.bomb_ready:
+        if key[pygame.K_x] and self.bomb_ready and self.power >= 1:
             self.bomb_requested = True
             self.bomb_ready = False
         elif not key[pygame.K_x]:
@@ -204,7 +204,7 @@ class Player(pygame.sprite.Sprite):
                 self.rect.bottom = screen_height
 
     def collision_enemy(self):
-        if self.invulnerable:
+        if self.invulnerable or self.bomb_requested:
             return
 
         for enemy in self.enemy_group:
@@ -215,7 +215,7 @@ class Player(pygame.sprite.Sprite):
             self.alive = False
 
     def collision_enemy_bullet(self):
-        if self.invulnerable:
+        if self.invulnerable or self.bomb_requested:
             return
 
         for enemy in self.enemy_group:
@@ -256,7 +256,7 @@ class Player(pygame.sprite.Sprite):
         self.bullet_group.update()
 
     def collision_boss_bullet(self, boss_bullet_group):
-        if self.invulnerable:
+        if self.invulnerable or self.bomb_requested:
             return
 
         for bullet in boss_bullet_group.copy():

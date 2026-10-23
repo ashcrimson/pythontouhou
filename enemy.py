@@ -73,7 +73,7 @@ class Enemy(pygame.sprite.Sprite):
                 self.state = "exit"
 
     def shoot(self):
-        if self.state != "attack":
+        if not self.alive or self.state != "attack":
             return
 
         self.shot_timer += 1
@@ -158,3 +158,39 @@ class Enemy(pygame.sprite.Sprite):
         self.exposion_group.update()
         self.enemy_bullet_group.draw(self.screen)
         self.enemy_bullet_group.update()
+
+
+class FairyEnemy(Enemy):
+    image_list = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if FairyEnemy.image_list is None:
+            FairyEnemy.image_list = [
+                pygame.transform.scale(
+                    pygame.image.load(
+                        f"assets/img/fairyenemy/fairyenemy{index}.png"
+                    ).convert_alpha(),
+                    (64, 64)
+                )
+                for index in range(11)
+            ]
+
+        self.image_list = FairyEnemy.image_list
+        self.index = 0
+        self.image = self.image_list[0]
+        self.rect = self.image.get_rect(center=(args[1], args[2]))
+        self.position = pygame.math.Vector2(self.rect.center)
+        self.path_speed = 2.8
+        self.bullet_count = max(self.bullet_count, 2)
+        self.bullet_speed = 3.4
+
+    def animation(self):
+        if self.alive:
+            self.index += 0.18
+            if self.index >= len(self.image_list):
+                self.index = 0
+            self.image = self.image_list[int(self.index)]
+        else:
+            self.image.set_alpha(0)

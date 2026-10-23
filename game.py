@@ -1,12 +1,13 @@
 import pygame
 from setting import *
 from player import Player
-from  enemy import Enemy
+from enemy import Enemy, FairyEnemy
 import random
 from support import draw_text
 from explosion import Explosion
 from enemy_bullet import EnemyBullet
 from power_item import PowerItem
+from bomb import Bomb
 import cv2
 import math
 
@@ -100,7 +101,7 @@ class Game:
         # Animación del sub-jefe
         self.subboss_image_list = []
 
-        for i in range(5):
+        for i in range(8):
             image = pygame.image.load(
                 f"assets/img/sub-boss/sub-boss{i}.png"
             ).convert_alpha()
@@ -108,47 +109,38 @@ class Game:
             image = pygame.transform.scale(image, (80, 80))
             self.subboss_image_list.append(image)
 
-            # Spell Card de Shizuha
-            self.subboss_spell_image = pygame.image.load(
-                "assets/img/sub-boss/sub-boss_spell.png"
-            ).convert_alpha()
+        self.subboss_spell_image = pygame.image.load(
+            "assets/img/sub-boss/sub-boss_spell.png"
+        ).convert_alpha()
+        self.subboss_background = pygame.image.load(
+            "assets/img/background/sub-boss_background.png"
+        ).convert()
+        self.boss_background = pygame.image.load(
+            "assets/img/background/sub-boss_background.png"
+        ).convert()
+        self.boss_background = pygame.transform.scale(
+            self.boss_background, (screen_width, screen_height)
+        )
+        self.subboss_background = pygame.transform.scale(
+            self.subboss_background, (screen_width, screen_height)
+        )
 
-            # Fondo especial del sub-jefe
-            self.subboss_background = pygame.image.load(
-                "assets/img/background/sub-boss_background.png"
-            ).convert()
-
-            self.boss_background = pygame.image.load(
-                "assets/img/background/sub-boss_background.png"
-            ).convert()
-
-            self.boss_background = pygame.transform.scale(
-                self.boss_background,
-                (screen_width, screen_height)
-            )
-
-            self.subboss_background = pygame.transform.scale(
-                self.subboss_background,
-                (screen_width, screen_height)
-            )
-
-            # Ajustar al alto de la pantalla conservando proporciones
-            spell_height = screen_height
-            spell_width = int(
-                self.subboss_spell_image.get_width()
-                * spell_height
-                / self.subboss_spell_image.get_height()
-            )
-
-            self.subboss_spell_image = pygame.transform.smoothscale(
-                self.subboss_spell_image,
-                (spell_width, spell_height)
-            )
-
-            self.subboss_spell_active = False
-            self.subboss_spell_x = screen_width
-            self.subboss_spell_speed = 18
-            self.subboss_spell_timer = 0
+        spell_height = screen_height
+        spell_width = int(
+            self.subboss_spell_image.get_width()
+            * spell_height
+            / self.subboss_spell_image.get_height()
+        )
+        self.subboss_spell_image = pygame.transform.smoothscale(
+            self.subboss_spell_image, (spell_width, spell_height)
+        )
+        self.subboss_spell_active = False
+        self.subboss_spell_x = screen_width
+        self.subboss_spell_speed = 18
+        self.subboss_spell_timer = 0
+        self.subboss_spell_used = False
+        self.subboss_spell_mode = False
+        self.subboss_pattern_shot_count = 0
 
         self.subboss_index = 0
         self.subboss_image = self.subboss_image_list[0]
@@ -181,26 +173,22 @@ class Game:
             image = pygame.transform.scale(image, (80, 80))
             self.boss_image_list.append(image)
 
-            # Spell Card de Minoriko
-            self.boss_spell_image = pygame.image.load(
-                "assets/img/boss/boss_spell.png"
-            ).convert_alpha()
-
-            spell_height = screen_height
-            spell_width = int(
-                self.boss_spell_image.get_width()
-                * spell_height
-                / self.boss_spell_image.get_height()
-            )
-
-            self.boss_spell_image = pygame.transform.smoothscale(
-                self.boss_spell_image,
-                (spell_width, spell_height)
-            )
-
-            self.boss_spell_active = False
-            self.boss_spell_x = screen_width
-            self.boss_spell_speed = 18
+        self.boss_spell_image = pygame.image.load(
+            "assets/img/boss/boss_spell.png"
+        ).convert_alpha()
+        spell_width = int(
+            self.boss_spell_image.get_width()
+            * spell_height
+            / self.boss_spell_image.get_height()
+        )
+        self.boss_spell_image = pygame.transform.smoothscale(
+            self.boss_spell_image, (spell_width, spell_height)
+        )
+        self.boss_spell_active = False
+        self.boss_spell_x = screen_width
+        self.boss_spell_speed = 18
+        self.boss_spell_used = False
+        self.boss_spell_mode = False
 
         self.boss_index = 0
         self.boss_image = self.boss_image_list[self.boss_index]
@@ -253,6 +241,7 @@ class Game:
 
         #ゲームオーバー判定
         self.game_over = False
+        self.bomb = None
 
         # BGM
         self.normal_bgm = 'assets/sound/bgm.mp3'
@@ -303,8 +292,16 @@ class Game:
         formations = self.normal_formations(self.stage_phase)
         formation = formations[self.wave_group_index]
 
-        for x, y, entry_x, entry_y, exit_x, exit_y, delays, bullet_count in formation:
-            Enemy(
+        for enemy_index, enemy_data in enumerate(formation):
+            x, y, entry_x, entry_y, exit_x, exit_y, delays, bullet_count = (
+                enemy_data
+            )
+            enemy_class = (
+                FairyEnemy
+                if self.wave_group_index in (2, 3) and enemy_index % 3 == 0
+                else Enemy
+            )
+            enemy_class(
                 self.enemy_group,
                 x,
                 y,
@@ -379,6 +376,7 @@ class Game:
             )
             self.enemy_group.empty()
             self.power_item_group.empty()
+            self.bomb = None
             self.game_over = False
 
     def scroll_bg(self):
@@ -486,11 +484,12 @@ class Game:
 
         self.subboss_index += self.subboss_animation_speed
 
-        if self.subboss_index >= len(self.subboss_image_list):
+        if self.subboss_index >= 4:
             self.subboss_index = 0
 
         self.subboss_image = self.subboss_image_list[
-            int(self.subboss_index)
+            (0 if self.subboss_direction > 0 else 4)
+            + int(self.subboss_index)
         ]
 
     def subboss_shoot(self):
@@ -498,6 +497,29 @@ class Game:
             return
 
         self.subboss_shoot_timer += 1
+
+        if self.subboss_spell_mode:
+            if self.subboss_shoot_timer >= 45:
+                base_angle = math.atan2(
+                    self.player.rect.centery - self.subboss_rect.bottom,
+                    self.player.rect.centerx - self.subboss_rect.centerx
+                )
+                sweep = (
+                    0.12 if self.subboss_pattern_shot_count % 2 == 0
+                    else -0.12
+                )
+                for index in range(9):
+                    angle = base_angle + (index - 4) * sweep
+                    EnemyBullet(
+                        self.subboss_bullet_group,
+                        self.subboss_rect.centerx,
+                        self.subboss_rect.bottom,
+                        velocity_x=math.cos(angle) * 3.7,
+                        velocity_y=math.sin(angle) * 3.7
+                    )
+                self.subboss_pattern_shot_count += 1
+                self.subboss_shoot_timer = 0
+            return
 
         # El segundo patrón comienza cuando pierde la mitad de la vida
         if self.subboss_hp <= self.subboss_max_hp // 2:
@@ -528,31 +550,44 @@ class Game:
         for bullet in self.player.bullet_group.copy():
             if self.subboss_rect.colliderect(bullet.rect):
                 bullet.kill()
+                self.damage_subboss(10)
 
-                self.boss_damage_sound.play()
-                self.subboss_hit_time = pygame.time.get_ticks()
+    def damage_subboss(self, damage):
+        if not self.subboss_active:
+            return
 
-                self.subboss_hp -= 10
-                self.subboss_hp = max(0, self.subboss_hp)
+        self.boss_damage_sound.play()
+        self.subboss_hit_time = pygame.time.get_ticks()
+        self.subboss_hp = max(0, self.subboss_hp - damage)
 
-                if self.subboss_hp == 0 and not self.subboss_exploded:
-                    self.subboss_active = False
-                    self.subboss_exploded = True
+        if self.subboss_hp == 0 and not self.subboss_exploded:
+            self.subboss_active = False
+            self.subboss_exploded = True
+            Explosion(
+                self.subboss_explosion_group,
+                self.subboss_rect.centerx,
+                self.subboss_rect.centery
+            )
+            PowerItem(
+                self.power_item_group,
+                self.subboss_rect.centerx,
+                self.subboss_rect.centery,
+                value=0.30
+            )
+            self.boss_explosion_sound.play()
+        elif (self.subboss_hp <= self.subboss_max_hp // 2
+              and not self.subboss_spell_used):
+            self.start_subboss_spell()
 
-                    Explosion(
-                        self.subboss_explosion_group,
-                        self.subboss_rect.centerx,
-                        self.subboss_rect.centery
-                    )
-
-                    PowerItem(
-                        self.power_item_group,
-                        self.subboss_rect.centerx,
-                        self.subboss_rect.centery,
-                        value=0.30
-                    )
-                    self.boss_explosion_sound.play()
-                    break
+    def start_subboss_spell(self):
+        self.subboss_spell_used = True
+        self.subboss_spell_mode = True
+        self.subboss_active = False
+        self.subboss_spell_active = True
+        self.subboss_spell_x = screen_width
+        self.subboss_spell_timer = 0
+        self.subboss_shoot_timer = 0
+        self.subboss_bullet_group.empty()
 
     def boss_collision(self):
         if not self.boss_active:
@@ -561,24 +596,61 @@ class Game:
         for bullet in self.player.bullet_group.copy():
             if self.boss_rect.colliderect(bullet.rect):
                 bullet.kill()
-                self.boss_damage_sound.play()
-                self.boss_hit_time = pygame.time.get_ticks()
-                self.boss_hp -= 10
-                self.boss_hp = max(0, self.boss_hp)
-                print("Vida del jefe:", self.boss_hp)
+                self.damage_boss(10)
 
-                if self.boss_hp == 0 and not self.boss_exploded:
-                    self.boss_active = False
-                    self.boss_exploded = True
+    def damage_boss(self, damage):
+        if not self.boss_active:
+            return
 
-                    Explosion(
-                        self.boss_explosion_group,
-                        self.boss_rect.centerx,
-                        self.boss_rect.centery
-                    )
+        self.boss_damage_sound.play()
+        self.boss_hit_time = pygame.time.get_ticks()
+        self.boss_hp = max(0, self.boss_hp - damage)
 
-                    self.boss_explosion_sound.play()
-                    break
+        if self.boss_hp == 0 and not self.boss_exploded:
+            self.boss_active = False
+            self.boss_exploded = True
+            Explosion(
+                self.boss_explosion_group,
+                self.boss_rect.centerx,
+                self.boss_rect.centery
+            )
+            self.boss_explosion_sound.play()
+        elif (self.boss_hp <= self.boss_max_hp // 2
+              and not self.boss_spell_used):
+            self.start_boss_spell()
+
+    def start_boss_spell(self):
+        self.boss_spell_used = True
+        self.boss_spell_mode = True
+        self.boss_active = False
+        self.boss_spell_active = True
+        self.boss_spell_x = screen_width
+        self.boss_shoot_timer = 0
+        self.boss_bullet_group.empty()
+
+    def update_bomb(self):
+        if self.bomb is None and self.player.use_bomb():
+            self.bomb = Bomb(self.player.rect.center)
+            self.player.start_bomb_invulnerability(self.bomb.duration)
+
+        if self.bomb is None:
+            return
+
+        self.boss_bullet_group.empty()
+        self.subboss_bullet_group.empty()
+        for enemy in self.enemy_group:
+            enemy.enemy_bullet_group.empty()
+
+        if self.bomb.should_damage:
+            for enemy in self.enemy_group:
+                if enemy.state != "exit":
+                    enemy.alive = False
+            self.damage_subboss(20)
+            self.damage_boss(20)
+
+        self.bomb.update(self.player.rect.center)
+        if self.bomb.finished:
+            self.bomb = None
 
     def boss_intro(self):
         # Comienza cuando Minoriko dice "eat a god"
@@ -628,6 +700,26 @@ class Game:
             return
 
         self.boss_shoot_timer += 1
+
+        if self.boss_spell_mode:
+            if self.boss_shoot_timer >= 50:
+                base_angle = math.atan2(
+                    self.player.rect.centery - self.boss_rect.bottom,
+                    self.player.rect.centerx - self.boss_rect.centerx
+                )
+                rotation = self.boss_pattern_shot_count * 0.18
+                for index in range(12):
+                    angle = base_angle + rotation + (index - 5.5) * 0.13
+                    EnemyBullet(
+                        self.boss_bullet_group,
+                        self.boss_rect.centerx,
+                        self.boss_rect.bottom,
+                        velocity_x=math.cos(angle) * 3.9,
+                        velocity_y=math.sin(angle) * 3.9
+                    )
+                self.boss_pattern_shot_count += 1
+                self.boss_shoot_timer = 0
+            return
 
         # Dirección desde Minoriko hacia Reimu
         dx = self.player.rect.centerx - self.boss_rect.centerx
@@ -802,9 +894,7 @@ class Game:
                     self.ending_screen = True
                     self.ending_screen_time = pygame.time.get_ticks()
                 else:
-                    self.boss_active = False
-                    self.boss_spell_active = True
-                    self.boss_spell_x = screen_width
+                    self.boss_active = True
 
                     pygame.mixer.music.load(self.boss_bgm)
                     pygame.mixer.music.play(-1)
@@ -812,9 +902,9 @@ class Game:
 
 
     def run(self):
-        if self.boss_spell_active or self.boss_active:
+        if self.boss_spell_active:
             self.screen.blit(self.boss_background, (0, 0))
-        elif self.subboss_spell_active or self.subboss_active:
+        elif self.subboss_spell_active:
             self.screen.blit(self.subboss_background, (0, 0))
         else:
             self.scroll_bg()
@@ -844,13 +934,12 @@ class Game:
                 and self.wave_group_index >= 4
                 and len(self.enemy_group) == 0):
             self.stage_phase = "subboss"
-            self.subboss_active = False
+            self.subboss_active = True
             self.subboss_hp = self.subboss_max_hp
             self.subboss_rect.midtop = (screen_width // 2, 80)
-
-            self.subboss_spell_active = True
-            self.subboss_spell_x = screen_width
-            self.subboss_spell_timer = 0
+            self.subboss_spell_used = False
+            self.subboss_spell_mode = False
+            self.subboss_pattern_shot_count = 0
 
         # Termina la segunda oleada: comienza el diálogo de Minoriko
         if (self.stage_phase == "wave2"
@@ -885,6 +974,7 @@ class Game:
         else:
             self.player_group.draw(self.screen)
             self.player_group.update()
+        self.update_bomb()
         self.player.collision_boss_bullet(self.boss_bullet_group)
         self.player.collision_boss_bullet(self.subboss_bullet_group)
         self.enemy_group.draw(self.screen)
@@ -973,6 +1063,9 @@ class Game:
         self.subboss_bullet_group.draw(self.screen)
         self.subboss_bullet_group.update()
 
+        if self.bomb is not None:
+            self.bomb.draw(self.screen)
+
         # La segunda oleada comienza tras terminar la explosión
         if (self.subboss_exploded
                 and len(self.subboss_explosion_group) == 0
@@ -986,8 +1079,6 @@ class Game:
         self.boss_spell_animation()
         self.draw_power()
         self.dialogue()
-
-
 
 
 
